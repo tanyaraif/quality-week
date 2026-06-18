@@ -1,88 +1,31 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Добро пожаловать</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #fff;
-            text-align: center;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 600px;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 24px;
-            padding: 48px 40px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 16px;
-        }
-
-        p {
-            font-size: 1.15rem;
-            line-height: 1.6;
-            opacity: 0.9;
-            margin-bottom: 32px;
-        }
-
-        .btn {
-            display: inline-block;
-            background: #fff;
-            color: #764ba2;
-            text-decoration: none;
-            font-weight: 600;
-            padding: 14px 32px;
-            border-radius: 999px;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
-        }
-
-        .wave {
-            font-size: 3rem;
-            display: inline-block;
-            animation: wave 2s infinite;
-            transform-origin: 70% 70%;
-        }
-
-        @keyframes wave {
-            0%, 60%, 100% { transform: rotate(0deg); }
-            10%, 30% { transform: rotate(14deg); }
-            20% { transform: rotate(-8deg); }
-            40% { transform: rotate(-4deg); }
-            50% { transform: rotate(10deg); }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Запись на мероприятия</title>
+  <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-    <div class="container">
-        <span class="wave">👋</span>
-        <h1>Добро пожаловать!</h1>
-        <p>Рады видеть вас на нашем сайте. Здесь начинается ваше путешествие — выберите, что хотите сделать дальше.</p>
-        <a href="#" class="btn">Начать</a>
-    </div>
+  <div class="container">
+    <header>
+      <div class="logo">Запись на <span>мероприятия</span></div>
+      <nav class="nav">
+        <button id="nav-register" class="active">Регистрация</button>
+        <button id="nav-schedule">Мероприятия</button>
+      </nav>
+    </header>
+
+    <main>
+      <section id="view-register"></section>
+      <section id="view-schedule" class="hidden"></section>
+    </main>
+  </div>
+
+  <!-- Конфиги и логика. Порядок важен: config → events → api → app. -->
+  <script src="js/config.js"></script>
+  <script src="js/events.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>

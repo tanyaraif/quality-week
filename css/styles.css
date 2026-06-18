@@ -1,0 +1,378 @@
+:root {
+  --bg: #0f1226;
+  --bg-card: rgba(255, 255, 255, 0.05);
+  --border: rgba(255, 255, 255, 0.12);
+  --accent: #6c8cff;
+  --accent-2: #9b6cff;
+  --text: #eef0ff;
+  --text-dim: #9aa0c2;
+  --green: #36d399;
+  --red: #f87272;
+  --yellow: #fbbd23;
+  --radius: 16px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  background: radial-gradient(1200px 600px at 80% -10%, #2a2350 0%, transparent 60%),
+    radial-gradient(900px 500px at -10% 10%, #1b2b5a 0%, transparent 55%),
+    var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+.container {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+}
+
+/* ---------- Шапка / навигация ---------- */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 18px 0 24px;
+}
+
+.logo {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.logo span {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.nav {
+  display: flex;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px;
+}
+
+.nav button {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.nav button.active {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  color: #fff;
+}
+
+/* ---------- Карточки / общие блоки ---------- */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  backdrop-filter: blur(8px);
+}
+
+h1 {
+  font-size: 1.9rem;
+  margin-bottom: 6px;
+}
+
+h2 {
+  font-size: 1.3rem;
+  margin-bottom: 12px;
+}
+
+.subtitle {
+  color: var(--text-dim);
+  margin-bottom: 24px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---------- Формы ---------- */
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 0.95rem;
+}
+
+input,
+select {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font: inherit;
+  padding: 12px 14px;
+  outline: none;
+  transition: border 0.2s;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--accent);
+}
+
+.field {
+  margin-bottom: 18px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 12px 24px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  color: #fff;
+  transition: transform 0.15s, opacity 0.2s;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn.secondary {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
+}
+
+/* ---------- Сообщения ---------- */
+.msg {
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: 0.95rem;
+}
+
+.msg.error {
+  background: rgba(248, 114, 114, 0.12);
+  border: 1px solid rgba(248, 114, 114, 0.4);
+  color: #ffd5d5;
+}
+
+.msg.success {
+  background: rgba(54, 211, 153, 0.12);
+  border: 1px solid rgba(54, 211, 153, 0.4);
+  color: #c8ffe9;
+}
+
+.msg.info {
+  background: rgba(108, 140, 255, 0.12);
+  border: 1px solid rgba(108, 140, 255, 0.4);
+  color: #d7e0ff;
+}
+
+.user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(108, 140, 255, 0.15);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+}
+
+.role-pill {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.role-pill.tck {
+  background: var(--accent-2);
+}
+
+/* ---------- Сетка слотов ---------- */
+.slots-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.slot {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: border 0.15s, background 0.15s;
+}
+
+.slot:hover:not(.taken) {
+  border-color: var(--accent);
+}
+
+.slot.taken {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.slot.selected {
+  border-color: var(--accent);
+  background: rgba(108, 140, 255, 0.18);
+}
+
+.slot-time {
+  font-weight: 600;
+}
+
+.slot-meta {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.slot-status {
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.slot-status.free {
+  color: var(--green);
+}
+
+.slot-status.busy {
+  color: var(--text-dim);
+}
+
+/* ---------- Таблица графика мероприятия ---------- */
+.event-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.event-tab {
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.event-tab.active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: rgba(108, 140, 255, 0.15);
+}
+
+.event-tab small {
+  display: block;
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 0.92rem;
+}
+
+.schedule-table th,
+.schedule-table td {
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.schedule-table th {
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.cell-free {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.cell-name {
+  font-weight: 600;
+}
+
+.cell-empty {
+  color: var(--text-dim);
+}
+
+.refresh-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin-top: 14px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.muted {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 600px) {
+  h1 { font-size: 1.5rem; }
+  .schedule-table { font-size: 0.82rem; }
+  .schedule-table th, .schedule-table td { padding: 7px 8px; }
+}
