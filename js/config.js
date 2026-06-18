@@ -46,10 +46,17 @@ const CONFIG = {
   // role — "service" или "tck".
   // Тестовый ключ 123 оставлен для проверки.
   users: [
+    // --- Тестовые аккаунты (для проверки) ---
     { key: "123", lastName: "Тестов", firstName: "Тест", role: "service" },
-    // Примеры — замените на реальных людей:
-    // { key: "a1b2", lastName: "Иванов", firstName: "Иван",   role: "service" },
-    // { key: "c3d4", lastName: "Петрова", firstName: "Анна",  role: "tck" },
+    // Сервисная поддержка (выбирает train / личное время):
+    { key: "service1", lastName: "Иванов", firstName: "Иван", role: "service" },
+    { key: "service2", lastName: "Смирнова", firstName: "Ольга", role: "service" },
+    { key: "service3", lastName: "Кузнецов", firstName: "Дмитрий", role: "service" },
+    // ТЦК (записывается в слоты ТЦК):
+    { key: "tck1", lastName: "Петрова", firstName: "Анна", role: "tck" },
+    { key: "tck2", lastName: "Соколов", firstName: "Максим", role: "tck" },
+    { key: "tck3", lastName: "Морозова", firstName: "Елена", role: "tck" },
+    // --- Реальных пользователей добавляйте по тому же образцу ---
   ],
 };
 
