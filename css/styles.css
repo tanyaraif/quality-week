@@ -35,6 +35,22 @@ body {
   padding: 24px 20px 64px;
 }
 
+/* ---------- Экран входа (до авторизации) ---------- */
+body:not(.authed) header { display: none; }
+
+body:not(.authed) main {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+}
+
+body:not(.authed) #view-register {
+  width: 100%;
+  max-width: 420px;
+}
+
 /* ---------- Шапка / навигация ---------- */
 header {
   display: flex;

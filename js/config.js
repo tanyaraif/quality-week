@@ -1,45 +1,8 @@
-/**
- * Общая конфигурация приложения.
- *
- * ВНИМАНИЕ: сайт хостится как статика (GitHub Pages), поэтому всё, что лежит
- * в этом файле, видно любому посетителю. Для Supabase это нормально: anon-ключ
- * публичный по умолчанию, а доступ к данным ограничивается политиками
- * Row Level Security (см. supabase-setup.sql).
- */
-
 const CONFIG = {
-  // ---- Настройки Supabase -------------------------------------------------
-  // 1. Создайте проект на https://supabase.com
-  // 2. Выполните SQL из supabase-setup.sql (SQL Editor → Run).
-  // 3. Скопируйте из Settings → API: Project URL и anon public key.
   supabase: {
-    url: "ВСТАВЬТЕ_PROJECT_URL", // например: https://abcdefgh.supabase.co
-    anonKey: "ВСТАВЬТЕ_ANON_KEY", // публичный anon-ключ (длинный JWT)
+    url: "https://rfjfukslvatnxgjqvanf.supabase.co",
+    anonKey: "sb_publishable_xIW1nvioQHWYZbRK-Ds21A_bDrOS8MB",
   },
-
-  // ---- Лимит регистраций --------------------------------------------------
-  // Ключ может сделать новую запись не чаще, чем раз в N часов
-  // (отсчёт от последней УСПЕШНОЙ записи на любой слот).
-  registrationCooldownHours: 3,
-
-  // ---- Как часто автообновлять график записей (мс) ------------------------
-  refreshIntervalMs: 30 * 1000,
-
-  // ---- Роли ---------------------------------------------------------------
-  // service — сотрудник сервисной поддержки (выбирает train / личное время)
-  // tck     — сотрудник команды ТЦК (свободный график, отдельные слоты)
-  roles: {
-    service: "Сервисная поддержка",
-    tck: "ТЦК",
-  },
-
-  // ---- Типы участия -------------------------------------------------------
-  participationTypes: {
-    train: { label: "Train (выход из линии)", forRole: "service" },
-    personal: { label: "Личное время (обед / выходной)", forRole: "service" },
-    tck: { label: "ТЦК (свободный график)", forRole: "tck" },
-  },
-
-  // Пользователи теперь хранятся в таблице users в Supabase
-  // (заполняются через supabase-setup.sql или вручную в Table Editor).
+  registrationCooldownMinutes: 180,
+  refreshIntervalMs: 30_000,
 };

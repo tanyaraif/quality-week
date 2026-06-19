@@ -1,191 +1,161 @@
-/**
- * Модуль работы с jsonbin.io.
- *
- * В bin хранится объект вида:
- *   { "records": [ { запись }, ... ] }
- *
- * Запись (record):
- *   {
- *     userKey:    "123",
- *     lastName:   "Тестов",
- *     firstName:  "Тест",
- *     role:       "service",
- *     eventId:    "feedback-29",
- *     eventTitle: "Мастер-класс по обратной связи",
- *     slotIndex:  0,
- *     slotTime:   "14:00–14:30",
- *     type:       "train",
- *     createdAt:  "2026-06-18T10:00:00.000Z"
- *   }
- *
- * Если ключи jsonbin не заданы (плейсхолдеры), модуль автоматически работает
- * через localStorage — это позволяет тестировать сайт локально без бэкенда.
- */
-
 const Api = (() => {
-  const { binId, accessKey, baseUrl } = CONFIG.jsonbin;
+  const { url, anonKey } = CONFIG.supabase;
+  const base = `${url.replace(/\/$/, "")}/rest/v1`;
 
-  const isConfigured =
-    binId &&
-    accessKey &&
-    binId !== "ВСТАВЬТЕ_BIN_ID" &&
-    accessKey !== "ВСТАВЬТЕ_ACCESS_KEY";
+  function hdrs(extra = {}) {
+    return {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+      "Content-Type": "application/json",
+      ...extra,
+    };
+  }
 
-  const LOCAL_STORAGE_KEY = "registrations_fallback";
+  async function get(path) {
+    const res = await fetch(`${base}${path}`, { headers: hdrs() });
+    if (!res.ok) throw new Error(`${path} → ${res.status}`);
+    return res.json();
+  }
 
-  // -------------------- localStorage fallback ----------------------------
-  function localGet() {
-    try {
-      const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : { records: [] };
-    } catch (e) {
-      return { records: [] };
+  function fromRow(r) {
+    return {
+      id:         r.id,
+      userKey:    r.user_key,
+      lastName:   r.last_name,
+      firstName:  r.first_name,
+      role:       r.role,
+      eventId:    r.event_id,
+      eventTitle: r.event_title,
+      date:       r.date,
+      eventDate:  r.event_date,
+      slotIndex:  r.slot_index,
+      slotTime:   r.slot_time,
+      type:       r.type,
+      createdAt:  r.created_at,
+    };
+  }
+
+  async function getUsers() {
+    return (await get("/users?select=*")).map((u) => ({
+      key:       u.key,
+      lastName:  u.last_name,
+      firstName: u.first_name,
+      role:      u.role,
+    }));
+  }
+
+  async function getRoles() {
+    return get("/roles?select=*");
+  }
+
+  async function getParticipationTypes() {
+    return get("/participation_types?select=*");
+  }
+
+  async function getEvents() {
+    const [rawEvents, rawDates, rawSlots] = await Promise.all([
+      get("/events?select=*&is_active=eq.true&order=sort_order.asc"),
+      get("/event_dates?select=*&order=sort_order.asc"),
+      get("/event_slots?select=*&order=sort_order.asc"),
+    ]);
+
+    const slotsByDateId = {};
+    for (const s of rawSlots) {
+      (slotsByDateId[s.event_date_id] ??= []).push({ time: s.time, types: s.types });
     }
-  }
 
-  function localPut(data) {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
-    return data;
-  }
-
-  // -------------------- jsonbin -----------------------------------------
-  async function remoteGet() {
-    const res = await fetch(`${baseUrl}/${binId}/latest`, {
-      method: "GET",
-      headers: {
-        "X-Access-Key": accessKey,
-        "X-Bin-Meta": "false",
-      },
-    });
-    if (!res.ok) {
-      throw new Error(`jsonbin GET ${res.status}: ${await res.text()}`);
+    const datesByEventId = {};
+    for (const d of rawDates) {
+      (datesByEventId[d.event_id] ??= []).push({
+        date:      d.date,
+        dateLabel: d.date_label,
+        slots:     slotsByDateId[d.id] ?? [],
+      });
     }
-    const data = await res.json();
-    // X-Bin-Meta:false возвращает сам record напрямую.
-    if (data && Array.isArray(data.records)) return data;
-    return { records: [] };
+
+    return rawEvents.map((e) => ({
+      id:          e.id,
+      title:       e.title,
+      description: e.description,
+      dates:       datesByEventId[e.id] ?? [],
+    }));
   }
 
-  async function remotePut(data) {
-    const res = await fetch(`${baseUrl}/${binId}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Access-Key": accessKey,
-      },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      throw new Error(`jsonbin PUT ${res.status}: ${await res.text()}`);
-    }
-    return data;
-  }
-
-  // -------------------- Публичный API ------------------------------------
-
-  /** Получить { records: [...] }. */
-  async function getData() {
-    return isConfigured ? remoteGet() : localGet();
-  }
-
-  /** Получить только массив записей. */
   async function getRecords() {
-    const data = await getData();
-    return Array.isArray(data.records) ? data.records : [];
+    return (await get("/registrations?select=*&order=created_at.asc")).map(fromRow);
   }
 
-  /**
-   * Добавить запись. Делает повторное чтение прямо перед записью, чтобы
-   * снизить риск гонок (полностью на jsonbin это не решается, но для
-   * небольшой активности достаточно). Возвращает обновлённый массив.
-   */
   async function addRecord(record) {
-    const data = await getData();
-    if (!Array.isArray(data.records)) data.records = [];
-    data.records.push(record);
-    if (isConfigured) {
-      await remotePut(data);
-    } else {
-      localPut(data);
+    const res = await fetch(`${base}/registrations`, {
+      method:  "POST",
+      headers: hdrs({ Prefer: "return=minimal" }),
+      body: JSON.stringify({
+        user_key:    record.userKey,
+        last_name:   record.lastName,
+        first_name:  record.firstName,
+        role:        record.role,
+        event_id:    record.eventId,
+        event_title: record.eventTitle,
+        date:        record.date,
+        event_date:  record.eventDate,
+        slot_index:  record.slotIndex,
+        slot_time:   record.slotTime,
+        type:        record.type,
+        created_at:  record.createdAt,
+      }),
+    });
+
+    if (res.status === 409) {
+      const err = new Error("slot taken");
+      err.code = "slot_taken";
+      throw err;
     }
-    return data.records;
+    if (!res.ok) throw new Error(`registrations insert → ${res.status}`);
+    return getRecords();
   }
 
-  return {
-    isConfigured,
-    getRecords,
-    addRecord,
-  };
+  return { getUsers, getRoles, getParticipationTypes, getEvents, getRecords, addRecord };
 })();
 
-// -------------------- Бизнес-правила (не зависят от транспорта) ----------
-
-/**
- * Проверить лимит «раз в N часов» по ключу.
- * Возвращает { allowed: boolean, remainingMs: number }.
- */
 function checkCooldown(records, userKey) {
-  const cooldownMs = CONFIG.registrationCooldownHours * 60 * 60 * 1000;
-  const userRecords = records
+  const cooldownMs = CONFIG.registrationCooldownMinutes * 60_000;
+  const times = records
     .filter((r) => r.userKey === userKey)
     .map((r) => new Date(r.createdAt).getTime())
-    .filter((t) => !isNaN(t));
+    .filter(Number.isFinite);
 
-  if (userRecords.length === 0) {
-    return { allowed: true, remainingMs: 0 };
-  }
-
-  const last = Math.max(...userRecords);
-  const elapsed = Date.now() - last;
-  if (elapsed >= cooldownMs) {
-    return { allowed: true, remainingMs: 0 };
-  }
-  return { allowed: false, remainingMs: cooldownMs - elapsed };
+  if (!times.length) return { allowed: true, remainingMs: 0 };
+  const remaining = cooldownMs - (Date.now() - Math.max(...times));
+  return remaining > 0
+    ? { allowed: false, remainingMs: remaining }
+    : { allowed: true, remainingMs: 0 };
 }
 
-/** Проверить, занята ли конкретная ячейка (мероприятие + дата + слот + тип). */
 function isSlotTaken(records, eventId, date, slotIndex, type) {
   return records.some(
-    (r) =>
-      r.eventId === eventId &&
-      r.date === date &&
-      r.slotIndex === slotIndex &&
-      r.type === type
+    (r) => r.eventId === eventId && r.date === date && r.slotIndex === slotIndex && r.type === type
   );
 }
 
-/** Найти запись, занявшую ячейку (для отображения «кто записан»). */
 function findSlotRecord(records, eventId, date, slotIndex, type) {
-  return (
-    records.find(
-      (r) =>
-        r.eventId === eventId &&
-        r.date === date &&
-        r.slotIndex === slotIndex &&
-        r.type === type
-    ) || null
-  );
+  return records.find(
+    (r) => r.eventId === eventId && r.date === date && r.slotIndex === slotIndex && r.type === type
+  ) ?? null;
 }
 
-/** Все записи конкретного пользователя (по ключу), новые сверху. */
 function getUserRecords(records, userKey) {
   return records
     .filter((r) => r.userKey === userKey)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
-/** Записан ли пользователь на это мероприятие (любая дата/слот/тип). */
 function isRegisteredForEvent(records, userKey, eventId) {
   return records.some((r) => r.userKey === userKey && r.eventId === eventId);
 }
 
-/** Отформатировать оставшееся время ожидания в «Ч ч ММ мин». */
 function formatRemaining(ms) {
-  const totalMinutes = Math.ceil(ms / 60000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours > 0) {
-    return `${hours} ч ${String(minutes).padStart(2, "0")} мин`;
-  }
-  return `${minutes} мин`;
+  const mins = Math.ceil(ms / 60_000);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h > 0 ? `${h} ч ${String(m).padStart(2, "0")} мин` : `${mins} мин`;
 }
