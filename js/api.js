@@ -167,6 +167,18 @@ function findSlotRecord(records, eventId, date, slotIndex, type) {
   );
 }
 
+/** Все записи конкретного пользователя (по ключу), новые сверху. */
+function getUserRecords(records, userKey) {
+  return records
+    .filter((r) => r.userKey === userKey)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+/** Записан ли пользователь на это мероприятие (любая дата/слот/тип). */
+function isRegisteredForEvent(records, userKey, eventId) {
+  return records.some((r) => r.userKey === userKey && r.eventId === eventId);
+}
+
 /** Отформатировать оставшееся время ожидания в «Ч ч ММ мин». */
 function formatRemaining(ms) {
   const totalMinutes = Math.ceil(ms / 60000);

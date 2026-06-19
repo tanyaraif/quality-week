@@ -14,7 +14,8 @@
     selectedSlotIndex: null, // выбранный слот
     records: [], // последние загруженные записи
     activeTabEventId: EVENTS[0] ? EVENTS[0].id : null,
-    refreshTimer: null,
+    refreshTimer: null, // автообновление графика (schedule)
+    formRefreshTimer: null, // автообновление слотов на форме (register)
   };
 
   // -------------------- Хелперы DOM --------------------------------------
@@ -36,6 +37,44 @@
     });
     return node;
   };
+
+  // -------------------- Модальное окно -----------------------------------
+  /**
+   * Показать модалку. opts: { type: "success"|"error", title, text,
+   * buttonText, onClose }. Закрывается по кнопке, клику на фон и Esc.
+   */
+  function showModal({ type = "success", title, text, buttonText = "Понятно", onClose }) {
+    const root = $("#modal-root");
+    root.innerHTML = "";
+
+    const close = () => {
+      root.innerHTML = "";
+      document.removeEventListener("keydown", onEsc);
+      if (onClose) onClose();
+    };
+    const onEsc = (e) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("keydown", onEsc);
+
+    const icon = el(
+      "div",
+      { class: `modal-icon ${type}` },
+      type === "success" ? "✓" : "!"
+    );
+
+    const modal = el(
+      "div",
+      { class: "modal", onClick: (e) => e.stopPropagation() },
+      icon,
+      el("h3", {}, title),
+      text ? el("p", {}, text) : null,
+      el("button", { class: "btn", onClick: close }, buttonText)
+    );
+
+    const overlay = el("div", { class: "modal-overlay", onClick: close }, modal);
+    root.append(overlay);
+  }
 
   // -------------------- Сохранённый ключ ---------------------------------
   const SAVED_KEY = "saved_user_key";
@@ -69,13 +108,35 @@
     state.view = view;
     $("#nav-register").classList.toggle("active", view === "register");
     $("#nav-schedule").classList.toggle("active", view === "schedule");
+    $("#nav-mine").classList.toggle("active", view === "mine");
     $("#view-register").classList.toggle("hidden", view !== "register");
     $("#view-schedule").classList.toggle("hidden", view !== "schedule");
+    $("#view-mine").classList.toggle("hidden", view !== "mine");
 
     if (view === "schedule") {
       startScheduleAutoRefresh();
     } else {
       stopScheduleAutoRefresh();
+    }
+
+    // Автообновление слотов на форме регистрации.
+    stopFormAutoRefresh();
+    if (view === "register" && state.currentUser) {
+      state.formRefreshTimer = setInterval(
+        refreshFormSlots,
+        CONFIG.refreshIntervalMs
+      );
+    }
+
+    if (view === "mine") {
+      renderMyRecords();
+    }
+  }
+
+  function stopFormAutoRefresh() {
+    if (state.formRefreshTimer) {
+      clearInterval(state.formRefreshTimer);
+      state.formRefreshTimer = null;
     }
   }
 
@@ -156,6 +217,8 @@
 
     state.currentUser = user;
     renderRegistrationForm();
+    // setView запускает автообновление слотов на форме (теперь есть currentUser).
+    setView("register");
   }
 
   /** Какие типы участия доступны пользователю по его роли. */
@@ -190,13 +253,11 @@
       )
     );
 
-    // Селект мероприятия
-    const eventSelect = el(
-      "select",
-      { id: "event-select", onChange: onEventChange },
-      el("option", { value: "" }, "— выберите мероприятие —"),
-      ...EVENTS.map((ev) => el("option", { value: ev.id }, ev.title))
-    );
+    // Селект мероприятия (опции достроятся в fillEventOptions после загрузки записей)
+    const eventSelect = el("select", {
+      id: "event-select",
+      onChange: onEventChange,
+    });
 
     // Селект даты (заполняется после выбора мероприятия)
     const dateSelect = el(
@@ -271,9 +332,35 @@
 
     root.append(card);
 
+    // Опции мероприятий (пока без пометок «уже записан» — записи ещё не загружены).
+    fillEventOptions();
+
     // Подгружаем актуальные записи: нужны для отображения занятости слотов
     // и для проверки лимита 3 часа.
     loadRecordsForForm(user);
+  }
+
+  /**
+   * Заполнить селект мероприятий. Если пользователь уже записан на мероприятие,
+   * помечаем его и блокируем выбор (1 запись на мероприятие).
+   */
+  function fillEventOptions() {
+    const select = $("#event-select");
+    if (!select) return;
+    const user = state.currentUser;
+    select.innerHTML = "";
+    select.append(el("option", { value: "" }, "— выберите мероприятие —"));
+    EVENTS.forEach((ev) => {
+      const already =
+        user && isRegisteredForEvent(state.records, user.key, ev.id);
+      const opt = el(
+        "option",
+        { value: ev.id },
+        already ? `${ev.title} — вы уже записаны` : ev.title
+      );
+      if (already) opt.disabled = true;
+      select.append(opt);
+    });
   }
 
   /** Загрузить записи и показать предупреждение о лимите, если он активен. */
@@ -287,6 +374,9 @@
       );
       return;
     }
+
+    // Перестроим список мероприятий с учётом уже сделанных записей.
+    fillEventOptions();
 
     const cd = checkCooldown(state.records, user.key);
     if (!cd.allowed) {
@@ -445,18 +535,33 @@
       // Перечитываем актуальные данные перед записью.
       state.records = await Api.getRecords();
 
-      // Повторная проверка лимита (мог записаться с другого устройства).
-      const cd = checkCooldown(state.records, user.key);
-      if (!cd.allowed) {
-        showRegisterMsg(
-          `Регистрация доступна раз в ${CONFIG.registrationCooldownHours} ч. ` +
-            `Подождите ещё ${formatRemaining(cd.remainingMs)}.`,
-          "error"
-        );
+      // Проверка: не записан ли уже на это мероприятие (1 запись на мероприятие).
+      if (isRegisteredForEvent(state.records, user.key, state.selectedEventId)) {
+        const ev = findEventById(state.selectedEventId);
+        showModal({
+          type: "error",
+          title: "Вы уже записаны",
+          text: `На «${ev.title}» можно записаться только один раз. ` +
+            `Посмотреть свою запись можно во вкладке «Мои записи».`,
+        });
+        fillEventOptions();
+        renderSlots();
         return;
       }
 
-      // Повторная проверка занятости слота.
+      // Повторная проверка лимита (мог записаться с другого устройства).
+      const cd = checkCooldown(state.records, user.key);
+      if (!cd.allowed) {
+        showModal({
+          type: "error",
+          title: "Ещё рано",
+          text: `Запись доступна раз в ${CONFIG.registrationCooldownHours} ч. ` +
+            `Подождите ещё ${formatRemaining(cd.remainingMs)}.`,
+        });
+        return;
+      }
+
+      // Повторная проверка занятости слота (мог занять кто-то другой).
       if (
         isSlotTaken(
           state.records,
@@ -466,8 +571,14 @@
           state.selectedType
         )
       ) {
-        showRegisterMsg("Этот слот только что заняли. Выберите другой.", "error");
+        // Мгновенно помечаем слот занятым и сбрасываем выбор.
+        state.selectedSlotIndex = null;
         renderSlots();
+        showModal({
+          type: "error",
+          title: "Слот уже занят",
+          text: "Это время только что заняли. Выберите другой свободный слот.",
+        });
         return;
       }
 
@@ -491,16 +602,27 @@
 
       state.records = await Api.addRecord(record);
 
-      showRegisterMsg(
-        `Готово! Вы записаны: ${ev.title} (${eventDate.dateLabel}), ${slot.time}, ` +
-          `${CONFIG.participationTypes[state.selectedType].label}.`,
-        "success"
-      );
-      // Сбрасываем выбор слота, обновляем доступность.
+      // Сбрасываем выбор слота.
       state.selectedSlotIndex = null;
-      renderSlots();
+
+      // Модалка успеха → возврат на «Мероприятия» с активным табом события.
+      showModal({
+        type: "success",
+        title: "Вы записаны!",
+        text: `${ev.title} · ${eventDate.dateLabel} · ${slot.time} · ` +
+          `${CONFIG.participationTypes[state.selectedType].label}.`,
+        buttonText: "К мероприятиям",
+        onClose: () => {
+          state.activeTabEventId = ev.id;
+          setView("schedule");
+        },
+      });
     } catch (e) {
-      showRegisterMsg("Не удалось записаться. Попробуйте ещё раз.", "error");
+      showModal({
+        type: "error",
+        title: "Не удалось записаться",
+        text: "Произошла ошибка. Попробуйте ещё раз.",
+      });
     } finally {
       btn.disabled = false;
       btn.textContent = "Записаться";
@@ -572,9 +694,11 @@
           t
         );
         if (rec) {
+          const mine =
+            state.currentUser && rec.userKey === state.currentUser.key;
           return el(
             "td",
-            { class: "cell-name" },
+            { class: "cell-name" + (mine ? " cell-mine" : "") },
             `${rec.lastName} ${rec.firstName}`
           );
         }
@@ -647,6 +771,39 @@
     state.refreshTimer = setInterval(refreshRecords, CONFIG.refreshIntervalMs);
   }
 
+  // Автообновление слотов на форме регистрации: если кто-то занял слот, пока
+  // пользователь выбирает, он отметится как «занято» без действий пользователя.
+  async function refreshFormSlots() {
+    if (state.view !== "register" || !state.currentUser) return;
+    try {
+      state.records = await Api.getRecords();
+    } catch (e) {
+      return;
+    }
+    fillEventOptions();
+    // Восстановим выбранное мероприятие в селекте (fillEventOptions сбрасывает).
+    const eventSelect = $("#event-select");
+    if (eventSelect && state.selectedEventId) {
+      eventSelect.value = state.selectedEventId;
+    }
+    // Если выбранный слот успели занять — снимаем выбор.
+    if (
+      state.selectedEventId &&
+      state.selectedDate &&
+      state.selectedSlotIndex !== null &&
+      isSlotTaken(
+        state.records,
+        state.selectedEventId,
+        state.selectedDate,
+        state.selectedSlotIndex,
+        state.selectedType
+      )
+    ) {
+      state.selectedSlotIndex = null;
+    }
+    if (state.selectedEventId && state.selectedDate) renderSlots();
+  }
+
   function stopScheduleAutoRefresh() {
     if (state.refreshTimer) {
       clearInterval(state.refreshTimer);
@@ -654,10 +811,88 @@
     }
   }
 
+  // ===================== ВКЛАДКА «МОИ ЗАПИСИ» ===========================
+
+  async function renderMyRecords() {
+    const root = $("#view-mine");
+    root.innerHTML = "";
+
+    const user = state.currentUser;
+    if (!user) {
+      root.append(
+        el(
+          "div",
+          { class: "card" },
+          el("div", { class: "empty-state" }, "Сначала войдите по ключу.")
+        )
+      );
+      return;
+    }
+
+    const card = el(
+      "div",
+      { class: "card" },
+      el("h2", {}, "Мои записи"),
+      el("div", { id: "mine-list" }, el("div", { class: "muted" }, "Загрузка…"))
+    );
+    root.append(card);
+
+    // Подгружаем свежие данные.
+    try {
+      state.records = await Api.getRecords();
+    } catch (e) {
+      $("#mine-list").innerHTML = "";
+      $("#mine-list").append(
+        el("div", { class: "msg error" }, "Не удалось загрузить записи.")
+      );
+      return;
+    }
+
+    const mine = getUserRecords(state.records, user.key);
+    const list = $("#mine-list");
+    list.innerHTML = "";
+
+    if (mine.length === 0) {
+      list.append(
+        el(
+          "div",
+          { class: "empty-state" },
+          "Вы пока никуда не записаны. Перейдите во вкладку «Регистрация»."
+        )
+      );
+      return;
+    }
+
+    mine.forEach((rec) => {
+      const typeLabel =
+        (CONFIG.participationTypes[rec.type] &&
+          CONFIG.participationTypes[rec.type].label) ||
+        rec.type;
+      list.append(
+        el(
+          "div",
+          { class: "my-record" },
+          el(
+            "div",
+            {},
+            el("div", { class: "mr-title" }, rec.eventTitle),
+            el(
+              "div",
+              { class: "mr-meta" },
+              `${rec.eventDate} · ${rec.slotTime}`
+            )
+          ),
+          el("span", { class: "mr-type" }, typeLabel)
+        )
+      );
+    });
+  }
+
   // -------------------- Инициализация ------------------------------------
   function init() {
     $("#nav-register").addEventListener("click", () => setView("register"));
     $("#nav-schedule").addEventListener("click", () => setView("schedule"));
+    $("#nav-mine").addEventListener("click", () => setView("mine"));
 
     // Если ключ был сохранён ранее и пользователь с таким ключом всё ещё есть
     // в конфиге — сразу открываем форму записи, минуя ввод ключа.

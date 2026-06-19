@@ -13,14 +13,19 @@
       <nav class="nav">
         <button id="nav-register" class="active">Регистрация</button>
         <button id="nav-schedule">Мероприятия</button>
+        <button id="nav-mine">Мои записи</button>
       </nav>
     </header>
 
     <main>
       <section id="view-register"></section>
       <section id="view-schedule" class="hidden"></section>
+      <section id="view-mine" class="hidden"></section>
     </main>
   </div>
+
+  <!-- Контейнер для модальных окон -->
+  <div id="modal-root"></div>
 
   <!-- Конфиги и логика. Порядок важен: config → events → api → app. -->
   <script src="js/config.js"></script>

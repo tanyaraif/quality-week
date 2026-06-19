@@ -2,20 +2,19 @@
  * Общая конфигурация приложения.
  *
  * ВНИМАНИЕ: сайт хостится как статика (GitHub Pages), поэтому всё, что лежит
- * в этом файле, видно любому посетителю через DevTools. Не храните здесь
- * по-настоящему секретные данные. Access Key к jsonbin — расходный, при
- * необходимости его легко перевыпустить.
+ * в этом файле, видно любому посетителю. Для Supabase это нормально: anon-ключ
+ * публичный по умолчанию, а доступ к данным ограничивается политиками
+ * Row Level Security (см. supabase-setup.sql).
  */
 
 const CONFIG = {
-  // ---- Настройки jsonbin.io ----------------------------------------------
-  // 1. Заведите bin на https://jsonbin.io c начальным содержимым: {"records": []}
-  // 2. Создайте Access Key с правами Read + Update только на этот bin.
-  // 3. Подставьте значения ниже.
-  jsonbin: {
-    binId: "6a342bd8f5f4af5e290a3ba4",
-    accessKey: "$2a$10$vTB1ITdw3pz1IQkdajgqKO9/pKXVI26oH0l4Z7YCXRt9ifyxPC9/i",
-    baseUrl: "https://api.jsonbin.io/v3/b",
+  // ---- Настройки Supabase -------------------------------------------------
+  // 1. Создайте проект на https://supabase.com
+  // 2. Выполните SQL из supabase-setup.sql (SQL Editor → Run).
+  // 3. Скопируйте из Settings → API: Project URL и anon public key.
+  supabase: {
+    url: "ВСТАВЬТЕ_PROJECT_URL", // например: https://abcdefgh.supabase.co
+    anonKey: "ВСТАВЬТЕ_ANON_KEY", // публичный anon-ключ (длинный JWT)
   },
 
   // ---- Лимит регистраций --------------------------------------------------
@@ -41,27 +40,6 @@ const CONFIG = {
     tck: { label: "ТЦК (свободный график)", forRole: "tck" },
   },
 
-  // ---- Пользователи -------------------------------------------------------
-  // key  — персональный ключ, который выдаётся пользователю в личных сообщениях.
-  // role — "service" или "tck".
-  // Тестовый ключ 123 оставлен для проверки.
-  users: [
-    // --- Тестовые аккаунты (для проверки) ---
-    { key: "123", lastName: "Тестов", firstName: "Тест", role: "service" },
-    // Сервисная поддержка (выбирает train / личное время):
-    { key: "service1", lastName: "Иванов", firstName: "Иван", role: "service" },
-    { key: "service2", lastName: "Смирнова", firstName: "Ольга", role: "service" },
-    { key: "service3", lastName: "Кузнецов", firstName: "Дмитрий", role: "service" },
-    // ТЦК (записывается в слоты ТЦК):
-    { key: "tck1", lastName: "Петрова", firstName: "Анна", role: "tck" },
-    { key: "tck2", lastName: "Соколов", firstName: "Максим", role: "tck" },
-    { key: "tck3", lastName: "Морозова", firstName: "Елена", role: "tck" },
-    // --- Реальных пользователей добавляйте по тому же образцу ---
-  ],
+  // Пользователи теперь хранятся в таблице users в Supabase
+  // (заполняются через supabase-setup.sql или вручную в Table Editor).
 };
-
-/** Найти пользователя по ключу. Возвращает объект пользователя или null. */
-function findUserByKey(key) {
-  const normalized = String(key || "").trim();
-  return CONFIG.users.find((u) => u.key === normalized) || null;
-}
