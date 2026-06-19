@@ -7,10 +7,11 @@
     selectedType:      null,
     selectedSlotIndex: null,
     records:           [],
-    users:             [],
+    recordsLoaded:     false,
     events:            [],
-    roles:             [],   // [{ id, label }]
-    ptypes:            [],   // [{ id, label, for_role }]
+    roles:             [],
+    ptypes:            [],
+    cfg:               {},   // { registration_cooldown_minutes, refresh_interval_seconds }
     activeTabEventId:  null,
     refreshTimer:      null,
     formRefreshTimer:  null,
@@ -19,18 +20,29 @@
   const $  = (sel) => document.querySelector(sel);
   const SAVED_KEY = "saved_user_key";
 
-  function findUser(key)          { return state.users.find((u) => u.key === String(key || "").trim()) ?? null; }
   function findEvent(id)          { return state.events.find((e) => e.id === id) ?? null; }
   function findEventDate(ev, d)   { return ev.dates.find((x) => x.date === d) ?? null; }
   function roleLabel(id)          { return state.roles.find((r) => r.id === id)?.label ?? id; }
   function ptypesForRole(role)    { return state.ptypes.filter((t) => t.for_role === role); }
   function ptypeLabel(id)         { return state.ptypes.find((t) => t.id === id)?.label ?? id; }
 
+  function todayOmsk() {
+    return new Date(Date.now() + 6 * 3600_000).toISOString().slice(0, 10);
+  }
+
   function savedKey()             { try { return localStorage.getItem(SAVED_KEY); }  catch { return null; } }
   function saveKey(k)             { try { localStorage.setItem(SAVED_KEY, k); }      catch {} }
   function clearKey()             { try { localStorage.removeItem(SAVED_KEY); }      catch {} }
 
   function setAuthed(yes)         { document.body.classList.toggle("authed", yes); }
+
+  function logout() {
+    clearKey();
+    state.currentUser = null;
+    setAuthed(false);
+    renderKeyScreen();
+    setView("register");
+  }
 
   function el(tag, props = {}, ...children) {
     const node = document.createElement(tag);
@@ -43,6 +55,30 @@
       if (c != null) node.append(c.nodeType ? c : document.createTextNode(c));
     }
     return node;
+  }
+
+  // ── Иконки (inline SVG) ────────────────────────────────────────────────────
+  const ICONS = {
+    flask:    `<path d="M9 3h6M9 3v6l-4 9a1 1 0 0 0 .9 1.4h12.2a1 1 0 0 0 .9-1.4L15 9V3"/><path d="M6.5 15h11"/>`,
+    beaker:   `<path d="M6 3h12M7 3v5.5L4 19a1 1 0 0 0 1 1.3h14a1 1 0 0 0 1-1.3L17 8.5V3"/><path d="M5 15h14"/>`,
+    droplet:  `<path d="M12 3s6 6 6 11a6 6 0 0 1-12 0c0-5 6-11 6-11z"/>`,
+    atom:     `<circle cx="12" cy="12" r="1.5"/><ellipse cx="12" cy="12" rx="9" ry="4"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(120 12 12)"/>`,
+    check:    `<polyline points="20 6 9 17 4 12"/>`,
+    clipboard:`<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>`,
+  };
+
+  function icon(name, { size = 18, stroke = 1.8 } = {}) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", size);
+    svg.setAttribute("height", size);
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", stroke);
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.innerHTML = ICONS[name] ?? "";
+    return svg;
   }
 
   function showModal({ type = "success", title, text, buttonText = "Понятно", onClose }) {
@@ -73,7 +109,7 @@
     box.append(el("div", { class: `msg ${type}` }, text));
   }
 
-  function setView(view) {
+  function setView(view, { fromNav = false } = {}) {
     state.view = view;
     for (const v of ["register", "schedule", "mine"]) {
       $(`#nav-${v}`).classList.toggle("active", v === view);
@@ -88,7 +124,8 @@
 
     stopTimer("formRefreshTimer");
     if (view === "register" && state.currentUser) {
-      state.formRefreshTimer = setInterval(refreshFormSlots, CONFIG.refreshIntervalMs);
+      if (fromNav) renderRegistrationForm();
+      state.formRefreshTimer = setInterval(refreshFormSlots, state.cfg.refresh_interval_seconds * 1000);
     }
 
     if (view === "mine") renderMyRecords();
@@ -103,15 +140,35 @@
   function renderKeyScreen() {
     const root = $("#view-register");
     root.innerHTML = "";
-    root.append(el("div", { class: "card" },
-      el("h1", {}, "Регистрация на мероприятие"),
-      el("p", { class: "subtitle" }, "Введите персональный ключ, который вам выдали в личных сообщениях."),
+
+    const decor = el("div", { class: "login-decor" },
+      el("div", { class: "logo login-logo" },
+        el("div", { class: "logo-icon" },
+          (() => {
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("width", "22"); svg.setAttribute("height", "22");
+            svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none");
+            svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "2");
+            svg.setAttribute("stroke-linecap", "round"); svg.setAttribute("stroke-linejoin", "round");
+            svg.innerHTML = `<path d="M9 3h6M9 3v6l-4 9a1 1 0 0 0 .9 1.4h12.2a1 1 0 0 0 .9-1.4L15 9V3"/><path d="M6.5 15h11"/>`;
+            return svg;
+          })(),
+        ),
+        el("div", { class: "logo-text" }, "Неделя ", el("span", {}, "качества")),
+      ),
+    );
+
+    root.append(el("div", { class: "card card-enter" },
+      decor,
+      el("h1", {}, "Войдите в лабораторию"),
+      el("p", { class: "subtitle" }, "Ключ вам выдали в личных сообщениях — введите его, чтобы записаться на мероприятия."),
       el("div", { id: "register-msg" }),
       el("div", { class: "field" },
         el("label", { for: "key-input" }, "Персональный ключ"),
-        el("input", { id: "key-input", type: "text", placeholder: "Например: 123", autocomplete: "off" }),
+        el("input", { id: "key-input", type: "text", placeholder: "Например, service1", autocomplete: "off" }),
       ),
-      el("button", { class: "btn", onClick: handleKeySubmit }, "Продолжить"),
+      el("button", { class: "btn", id: "key-submit", style: "width:100%", onClick: handleKeySubmit },
+        icon("droplet"), "Запустить реакцию"),
     ));
     const input = $("#key-input");
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") handleKeySubmit(); });
@@ -121,9 +178,22 @@
   async function handleKeySubmit() {
     const key = $("#key-input").value.trim();
     if (!key) { showMsg("#register-msg", "Введите ключ.", "error"); return; }
-    const user = findUser(key);
-    if (!user) { showMsg("#register-msg", "Ключ не найден. Проверьте и попробуйте ещё раз.", "error"); return; }
-    saveKey(user.key);
+
+    const btn = $("#key-submit");
+    btn.disabled = true;
+
+    let user;
+    try {
+      user = await Api.getUserByKey(key);
+    } catch {
+      showMsg("#register-msg", "Ошибка соединения. Попробуйте ещё раз.", "error");
+      btn.disabled = false;
+      return;
+    }
+
+    if (!user) { showMsg("#register-msg", "Ключ не найден. Проверьте и попробуйте ещё раз.", "error"); btn.disabled = false; return; }
+
+    saveKey(key);
     state.currentUser = user;
     setAuthed(true);
     renderRegistrationForm();
@@ -138,109 +208,272 @@
     root.innerHTML = "";
 
     const userPtypes = ptypesForRole(user.role);
+    const hasMultipleTypes = userPtypes.length > 1;
     state.selectedEventId   = null;
     state.selectedDate      = null;
     state.selectedSlotIndex = null;
-    state.selectedType      = userPtypes[0]?.id ?? null;
+    state.selectedType      = hasMultipleTypes ? null : (userPtypes[0]?.id ?? null);
 
-    const typeField = userPtypes.length > 1
-      ? el("div", { class: "field" },
-          el("label", { for: "type-select" }, "Тип участия"),
-          el("select", { id: "type-select", onChange: onDateOrTypeChange },
-            ...userPtypes.map((t) => el("option", { value: t.id }, t.label)),
-          ),
-        )
-      : el("div", { class: "field" },
-          el("label", {}, "Тип участия"),
-          el("div", { class: "muted" }, userPtypes[0]?.label ?? "—"),
-        );
+    const cooldownMin = Number(state.cfg.registration_cooldown_minutes ?? 10);
 
-    root.append(el("div", { class: "card" },
-      el("h1", {}, "Запись на слот"),
-      el("div", { class: "user-badge" },
-        `${user.lastName} ${user.firstName}`,
-        el("span", { class: `role-pill${user.role === "tccg" ? " tck" : ""}` }, roleLabel(user.role)),
+    root.append(el("div", { class: "card card-enter" },
+      el("div", { class: "reg-header" },
+        el("h1", {}, icon("beaker", { size: 30 }), "Запись на эксперимент"),
+        el("p", { class: "reg-cooldown-note" },
+          icon("droplet", { size: 14 }),
+          `Между записями нужно подождать ${formatMinutes(cooldownMin)} — нельзя записаться на всё сразу`
+        ),
       ),
+      renderUserCard(user),
       el("div", { id: "register-msg" }),
       el("div", { class: "field" },
-        el("label", { for: "event-select" }, "Мероприятие"),
-        el("select", { id: "event-select", onChange: onEventChange }),
+        el("label", {}, "Выберите активность"),
+        el("div", { id: "event-cards", class: "event-cards" }),
       ),
-      el("div", { class: "field" },
-        el("label", { for: "date-select" }, "Дата"),
-        el("select", { id: "date-select", onChange: onDateOrTypeChange, disabled: "true" },
-          el("option", { value: "" }, "— сначала выберите мероприятие —"),
-        ),
+      userPtypes.length > 1
+        ? el("div", { id: "type-field", class: "field form-step hidden" },
+            el("label", {}, "Тип участия"),
+            el("div", { id: "type-cards", class: "date-cards" }),
+          )
+        : null,
+      el("div", { id: "date-field", class: "field form-step hidden" },
+        el("label", {}, "Дата"),
+        el("div", { id: "date-cards", class: "date-cards" }),
       ),
-      typeField,
-      el("div", { class: "field" },
+      el("div", { id: "slots-field", class: "field form-step hidden" },
         el("label", {}, "Свободное время"),
-        el("div", { id: "slots-container", class: "slots-grid" },
-          el("div", { class: "muted" }, "Сначала выберите мероприятие."),
-        ),
+        el("div", { id: "slots-container", class: "slots-grid" }),
       ),
-      el("button", { class: "btn", id: "register-submit", onClick: handleRegister }, "Записаться"),
+      el("button", { class: "btn", id: "register-submit", onClick: handleRegister },
+        icon("flask"), "Записаться"),
     ));
 
-    fillEventOptions();
-    loadRecordsForForm(user);
+    fillEventCards();
+    loadRecordsForForm();
   }
 
-  function fillEventOptions() {
-    const select = $("#event-select");
-    if (!select) return;
-    const user = state.currentUser;
-    select.innerHTML = "";
-    select.append(el("option", { value: "" }, "— выберите мероприятие —"));
-    for (const ev of state.events) {
-      const already = user && isRegisteredForEvent(state.records, user.key, ev.id);
-      const opt = el("option", { value: ev.id }, already ? `${ev.title} — вы уже записаны` : ev.title);
-      if (already) opt.disabled = true;
-      select.append(opt);
+  function renderUserCard(user) {
+    const isTck = user.role === "tccg";
+    return el("div", { class: "lab-badge" },
+      el("div", { class: "lab-badge-flask" + (isTck ? " tck" : "") },
+        icon("flask", { size: 16, stroke: 2 }),
+      ),
+      el("div", { class: "lab-badge-info" },
+        el("span", { class: "lab-badge-name" }, `${user.lastName} ${user.firstName}`),
+        el("span", { class: "lab-badge-role" }, roleLabel(user.role)),
+      ),
+    );
+  }
+
+  const EVENT_ICONS = {
+    feedback:     "atom",
+    inspector:    "droplet",
+    exchange:     "beaker",
+    frankenstein: "flask",
+    owngame:      "clipboard",
+  };
+
+  function fillEventCards() {
+    const container = $("#event-cards");
+    if (!container) return;
+    const user  = state.currentUser;
+    const today = todayOmsk();
+    container.innerHTML = "";
+
+    if (!state.recordsLoaded) {
+      container.append(el("div", { class: "event-cards-loading" },
+        el("div", { class: "skeleton-card" }),
+        el("div", { class: "skeleton-card" }),
+        el("div", { class: "skeleton-card" }),
+      ));
+      return;
+    }
+
+    const available = state.events.filter((ev) => {
+      if (user && isRegisteredForEvent(state.records, savedKey(), ev.id)) return false;
+      return ev.dates.some((d) => d.date >= today);
+    });
+
+    if (!available.length) {
+      container.append(el("div", { class: "muted" }, "Все активности уже в вашей колбе."));
+      return;
+    }
+
+    for (const ev of available) {
+      const isSelected = state.selectedEventId === ev.id;
+      const card = el("div", {
+        class: "event-pick-card" + (isSelected ? " selected" : ""),
+        onClick: () => onEventCardClick(ev.id),
+      },
+        el("div", { class: "event-pick-icon" }, icon(EVENT_ICONS[ev.id] ?? "flask", { size: 18 })),
+        el("div", { class: "event-pick-body" },
+          el("span", { class: "event-pick-title" }, ev.title),
+          ev.description
+            ? el("div", { class: "event-pick-details" },
+                el("div", { class: "event-pick-desc" }, ev.description),
+              )
+            : null,
+        ),
+        el("div", { class: "event-pick-check" },
+          el("svg", { viewBox: "0 0 24 24", width: "13", height: "13", fill: "none", stroke: "currentColor", "stroke-width": "3", "stroke-linecap": "round", "stroke-linejoin": "round" },
+            (() => { const p = document.createElementNS("http://www.w3.org/2000/svg","polyline"); p.setAttribute("points","20 6 9 17 4 12"); return p; })()
+          ),
+        ),
+      );
+      container.append(card);
     }
   }
 
-  async function loadRecordsForForm(user) {
+  function onEventCardClick(evId) {
+    const prev = state.selectedEventId;
+    state.selectedEventId   = evId;
+    state.selectedDate      = null;
+    state.selectedSlotIndex = null;
+
+    fillEventCards();
+
+    const typeField  = $("#type-field");
+    const dateField  = $("#date-field");
+    const slotsField = $("#slots-field");
+
+    if (prev !== evId) {
+      if (typeField) {
+        state.selectedType = null;
+        typeField.classList.add("hidden");
+        typeField.classList.remove("form-step-visible");
+      }
+      dateField.classList.add("hidden");
+      dateField.classList.remove("form-step-visible");
+      slotsField.classList.add("hidden");
+      slotsField.classList.remove("form-step-visible");
+    }
+
+    if (typeField) {
+      fillTypeCards();
+      if (typeField.classList.contains("hidden")) {
+        typeField.classList.remove("hidden");
+        requestAnimationFrame(() => { typeField.classList.add("form-step-visible"); scrollToField(typeField); });
+      }
+    } else {
+      fillDateCards();
+      if (dateField.classList.contains("hidden")) {
+        dateField.classList.remove("hidden");
+        requestAnimationFrame(() => { dateField.classList.add("form-step-visible"); scrollToField(dateField); });
+      }
+    }
+
+    renderSlots();
+  }
+
+  function scrollToField(el) {
+    setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "nearest" }), 60);
+  }
+
+  const TYPE_HINTS = {
+    train:    "Официально убежать веселиться",
+    personal: "Приду в своё личное время",
+  };
+
+  function fillTypeCards() {
+    const container = $("#type-cards");
+    if (!container) return;
+    container.innerHTML = "";
+    const userPtypes = ptypesForRole(state.currentUser.role);
+    for (const t of userPtypes) {
+      const isSelected = state.selectedType === t.id;
+      const hint = TYPE_HINTS[t.id];
+      container.append(el("div", {
+        class: "date-pick-card type-pick-card" + (isSelected ? " selected" : ""),
+        onClick: () => onTypeCardClick(t.id),
+      },
+        el("div", { class: "type-pick-label" }, t.label),
+        hint ? el("div", { class: "type-pick-hint" }, hint) : null,
+      ));
+    }
+  }
+
+  function onTypeCardClick(typeId) {
+    state.selectedType      = typeId;
+    state.selectedDate      = null;
+    state.selectedSlotIndex = null;
+
+    fillTypeCards();
+
+    const dateField  = $("#date-field");
+    const slotsField = $("#slots-field");
+
+    fillDateCards();
+
+    slotsField.classList.add("hidden");
+    slotsField.classList.remove("form-step-visible");
+
+    if (dateField.classList.contains("hidden")) {
+      dateField.classList.remove("hidden");
+      requestAnimationFrame(() => { dateField.classList.add("form-step-visible"); scrollToField(dateField); });
+    }
+
+    renderSlots();
+  }
+
+  function fillDateCards() {
+    const container = $("#date-cards");
+    if (!container) return;
+    container.innerHTML = "";
+
+    const ev = state.selectedEventId ? findEvent(state.selectedEventId) : null;
+    if (!ev) return;
+
+    const today = todayOmsk();
+    const futureDates = ev.dates.filter((d) => d.date >= today);
+
+    for (const d of futureDates) {
+      const isSelected = state.selectedDate === d.date;
+      const card = el("div", {
+        class: "date-pick-card" + (isSelected ? " selected" : ""),
+        onClick: () => onDateCardClick(d.date),
+      }, d.dateLabel);
+      container.append(card);
+    }
+  }
+
+  function onDateCardClick(date) {
+    state.selectedDate      = date;
+    state.selectedSlotIndex = null;
+
+    fillDateCards();
+
+    const slotsField = $("#slots-field");
+    if (slotsField.classList.contains("hidden")) {
+      slotsField.classList.remove("hidden");
+      requestAnimationFrame(() => { slotsField.classList.add("form-step-visible"); scrollToField(slotsField); });
+    }
+
+    renderSlots();
+  }
+
+  async function loadRecordsForForm() {
     try {
       state.records = await Api.getRecords();
-    } catch {
+    } catch (e) {
+      if (e?.status === 401 || e?.status === 403) { logout(); return; }
       showMsg("#register-msg", "Не удалось загрузить данные. Записи могут быть неактуальны.", "error");
       return;
     }
-    fillEventOptions();
-    const cd = checkCooldown(state.records, user.key);
+    const sk = savedKey();
+    if (sk) {
+      const still = await Api.getUserByKey(sk).catch(() => null);
+      if (!still) { logout(); return; }
+    }
+    state.recordsLoaded = true;
+    fillEventCards();
+    const cd = checkCooldown(state.records, savedKey(), state.cfg.registration_cooldown_minutes);
     if (!cd.allowed) {
-      showMsg("#register-msg", `Вы недавно записывались. Следующая запись доступна через ${formatRemaining(cd.remainingMs)}.`, "info");
+      showMsg("#register-msg", `Реакция ещё идёт ☕ Следующая запись будет готова через ${formatRemaining(cd.remainingMs)}.`, "info");
     }
     if (state.selectedEventId && state.selectedDate) renderSlots();
   }
 
-  function onEventChange() {
-    state.selectedEventId   = $("#event-select").value || null;
-    state.selectedDate      = null;
-    state.selectedSlotIndex = null;
 
-    const dateSelect = $("#date-select");
-    dateSelect.innerHTML = "";
-    const ev = state.selectedEventId ? findEvent(state.selectedEventId) : null;
-    if (!ev) {
-      dateSelect.disabled = true;
-      dateSelect.append(el("option", { value: "" }, "— сначала выберите мероприятие —"));
-    } else {
-      dateSelect.disabled = false;
-      dateSelect.append(el("option", { value: "" }, "— выберите дату —"));
-      for (const d of ev.dates) dateSelect.append(el("option", { value: d.date }, d.dateLabel));
-    }
-    renderSlots();
-  }
-
-  function onDateOrTypeChange() {
-    state.selectedDate      = $("#date-select")?.value || null;
-    state.selectedSlotIndex = null;
-    const ts = $("#type-select");
-    if (ts) state.selectedType = ts.value;
-    renderSlots();
-  }
 
   function renderSlots() {
     const container = $("#slots-container");
@@ -249,8 +482,9 @@
     const ev = state.selectedEventId ? findEvent(state.selectedEventId) : null;
     const eventDate = ev && state.selectedDate ? findEventDate(ev, state.selectedDate) : null;
 
-    if (!ev)        { container.append(el("div", { class: "muted" }, "Сначала выберите мероприятие.")); return; }
-    if (!eventDate) { container.append(el("div", { class: "muted" }, "Выберите дату.")); return; }
+    if (!ev)                    { container.append(el("div", { class: "muted" }, "Сначала выберите активность.")); return; }
+    if (!state.selectedType)    { container.append(el("div", { class: "muted" }, "Выберите тип участия.")); return; }
+    if (!eventDate)             { container.append(el("div", { class: "muted" }, "Выберите дату.")); return; }
 
     const type      = state.selectedType;
     const available = eventDate.slots.map((slot, index) => ({ slot, index })).filter(({ slot }) => slot.types.includes(type));
@@ -268,10 +502,8 @@
           class: "slot" + (taken ? " taken" : "") + (selected ? " selected" : ""),
           onClick: () => { if (taken) return; state.selectedSlotIndex = index; renderSlots(); },
         },
-        el("div", {},
-          el("div", { class: "slot-time" }, slot.time),
-          el("div", { class: "slot-meta" }, ptypeLabel(type)),
-        ),
+        el("div", { class: "slot-tube" }),
+        el("div", { class: "slot-time" }, slot.time),
         el("div", { class: `slot-status ${taken ? "busy" : "free"}` }, taken ? "Занято" : "Свободно"),
       ));
     }
@@ -279,38 +511,40 @@
 
   async function handleRegister() {
     const user = state.currentUser;
-    if (!state.selectedEventId)        { showMsg("#register-msg", "Выберите мероприятие.", "error"); return; }
+    if (!state.selectedEventId)        { showMsg("#register-msg", "Выберите активность.", "error"); return; }
     if (!state.selectedDate)           { showMsg("#register-msg", "Выберите дату.", "error"); return; }
     if (!state.selectedType)           { showMsg("#register-msg", "Выберите тип участия.", "error"); return; }
     if (state.selectedSlotIndex === null) { showMsg("#register-msg", "Выберите свободное время.", "error"); return; }
 
     const btn = $("#register-submit");
+    const setBtn = (children) => { btn.innerHTML = ""; btn.append(...children); };
     btn.disabled = true;
-    btn.textContent = "Записываем…";
+    setBtn([icon("droplet"), "Смешиваем реактивы…"]);
 
     try {
       state.records = await Api.getRecords();
 
-      if (isRegisteredForEvent(state.records, user.key, state.selectedEventId)) {
+      if (isRegisteredForEvent(state.records, savedKey(), state.selectedEventId)) {
         const ev = findEvent(state.selectedEventId);
-        showModal({ type: "error", title: "Вы уже записаны",
-          text: `На «${ev.title}» можно записаться только один раз. Посмотреть свою запись можно во вкладке «Мои записи».` });
-        fillEventOptions();
+        showModal({ type: "error", title: "Вы уже в эксперименте",
+          text: `На «${ev.title}» можно записаться только один раз. Свою запись найдёте во вкладке «Мои записи».`,
+        });
+        fillEventCards();
         renderSlots();
         return;
       }
 
-      const cd = checkCooldown(state.records, user.key);
+      const cd = checkCooldown(state.records, savedKey(), state.cfg.registration_cooldown_minutes);
       if (!cd.allowed) {
-        showModal({ type: "error", title: "Ещё рано",
-          text: `Запись доступна раз в ${CONFIG.registrationCooldownMinutes} мин. Подождите ещё ${formatRemaining(cd.remainingMs)}.` });
+        showModal({ type: "error", title: "Реакция ещё идёт",
+          text: `Следующая запись откроется через ${formatRemaining(cd.remainingMs)}.` });
         return;
       }
 
       if (isSlotTaken(state.records, state.selectedEventId, state.selectedDate, state.selectedSlotIndex, state.selectedType)) {
         state.selectedSlotIndex = null;
         renderSlots();
-        showModal({ type: "error", title: "Слот уже занят", text: "Это время только что заняли. Выберите другой свободный слот." });
+        showModal({ type: "error", title: "Колбу уже заняли", text: "Это время только что забрали. Выберите другую свободную пробирку." });
         return;
       }
 
@@ -319,7 +553,7 @@
       const slot      = eventDate.slots[state.selectedSlotIndex];
 
       state.records = await Api.addRecord({
-        userKey:    user.key,
+        userKey:    savedKey(),
         lastName:   user.lastName,
         firstName:  user.firstName,
         role:       user.role,
@@ -335,8 +569,8 @@
 
       state.selectedSlotIndex = null;
       showModal({
-        type: "success", title: "Вы записаны!",
-        text: `${ev.title} · ${eventDate.dateLabel} · ${slot.time} · ${ptypeLabel(state.selectedType)}.`,
+        type: "success", title: "Реакция пошла! 🎉",
+        text: `Вы записаны: ${ev.title} · ${eventDate.dateLabel} · ${slot.time} · ${ptypeLabel(state.selectedType)}.`,
         buttonText: "К мероприятиям",
         onClose: () => { state.activeTabEventId = ev.id; setView("schedule"); },
       });
@@ -345,13 +579,13 @@
         try { state.records = await Api.getRecords(); } catch {}
         state.selectedSlotIndex = null;
         renderSlots();
-        showModal({ type: "error", title: "Слот уже занят", text: "Это время только что заняли. Выберите другой свободный слот." });
+        showModal({ type: "error", title: "Колбу уже заняли", text: "Это время только что забрали. Выберите другую свободную пробирку." });
       } else {
-        showModal({ type: "error", title: "Не удалось записаться", text: "Произошла ошибка. Попробуйте ещё раз." });
+        showModal({ type: "error", title: "Реакция не удалась", text: "Что-то пошло не так. Попробуйте записаться ещё раз." });
       }
     } finally {
       btn.disabled = false;
-      btn.textContent = "Записаться";
+      setBtn([icon("flask"), "Записаться"]);
     }
   }
 
@@ -397,7 +631,7 @@
           if (!slot.types.includes(t)) return el("td", { class: "cell-empty" }, "—");
           const rec  = findSlotRecord(state.records, ev.id, eventDate.date, index, t);
           if (!rec)  return el("td", { class: "cell-free" }, "свободно");
-          const mine = state.currentUser?.key === rec.userKey;
+          const mine = savedKey() && rec.userKey === savedKey();
           return el("td", { class: "cell-name" + (mine ? " cell-mine" : "") }, `${rec.lastName} ${rec.firstName}`);
         }),
       ),
@@ -415,8 +649,18 @@
     if (!ev || !card) return;
     card.innerHTML = "";
     card.append(
-      el("h2", {}, ev.title),
+      el("h2", {}, icon("beaker", { size: 24 }), ev.title),
       el("p", { class: "event-desc" }, ev.description),
+      el("div", { class: "event-meta" },
+        ev.location ? el("div", { class: "event-meta-row" },
+          el("span", { class: "event-meta-label" }, "Место:"),
+          el("span", {}, ev.location),
+        ) : null,
+        ev.prepNote ? el("div", { class: "event-meta-row" },
+          el("span", { class: "event-meta-label" }, "Как начать:"),
+          el("span", {}, ev.prepNote),
+        ) : null,
+      ),
       ...ev.dates.map((eventDate) =>
         el("div", { class: "date-block" },
           el("h3", {}, eventDate.dateLabel),
@@ -425,7 +669,7 @@
       ),
       el("div", { class: "refresh-note" },
         el("span", { class: "dot" }),
-        `График обновляется автоматически раз в ${CONFIG.refreshIntervalMs / 1000} секунд.`,
+        `График обновляется автоматически раз в ${state.cfg.refresh_interval_seconds} секунд.`,
       ),
     );
   }
@@ -441,15 +685,13 @@
     renderScheduleShell();
     refreshRecords();
     stopTimer("refreshTimer");
-    state.refreshTimer = setInterval(refreshRecords, CONFIG.refreshIntervalMs);
+    state.refreshTimer = setInterval(refreshRecords, state.cfg.refresh_interval_seconds * 1000);
   }
 
   async function refreshFormSlots() {
     if (state.view !== "register" || !state.currentUser) return;
     try { state.records = await Api.getRecords(); } catch { return; }
-    fillEventOptions();
-    const eventSelect = $("#event-select");
-    if (eventSelect && state.selectedEventId) eventSelect.value = state.selectedEventId;
+    fillEventCards();
     if (state.selectedEventId && state.selectedDate && state.selectedSlotIndex !== null &&
         isSlotTaken(state.records, state.selectedEventId, state.selectedDate, state.selectedSlotIndex, state.selectedType)) {
       state.selectedSlotIndex = null;
@@ -470,25 +712,41 @@
     }
 
     const list = el("div", { id: "mine-list" }, el("div", { class: "muted" }, "Загрузка…"));
-    root.append(el("div", { class: "card" }, el("h2", {}, "Мои записи"), list));
+    root.append(el("div", { class: "card" },
+      el("h2", {}, icon("clipboard", { size: 24 }), "Мои записи"),
+      renderUserCard(user),
+      list,
+    ));
 
     try { state.records = await Api.getRecords(); }
     catch {
       list.innerHTML = "";
-      list.append(el("div", { class: "msg error" }, "Не удалось загрузить записи."));
+      list.append(el("div", { class: "msg error" }, "Не удалось загрузить записи. Попробуйте обновить страницу."));
       return;
     }
 
-    const mine = getUserRecords(state.records, user.key);
+    const mine = getUserRecords(state.records, savedKey());
     list.innerHTML = "";
 
     if (!mine.length) {
-      list.append(el("div", { class: "empty-state" }, "Вы пока никуда не записаны. Перейдите во вкладку «Регистрация»."));
+      const emptyFlask = icon("flask", { size: 56, stroke: 1.4 });
+      emptyFlask.setAttribute("class", "empty-flask");
+      list.append(el("div", { class: "empty-state" },
+        emptyFlask,
+        el("div", {}, "Ваши колбы пока пусты. Загляните во вкладку «Записаться» и выберите эксперимент."),
+      ));
       return;
     }
 
+    list.append(el("div", { class: "mine-contact-note" },
+      "Нужно изменить или отменить запись? Напишите ",
+      el("strong", {}, "Тане"),
+      " в Mattermost.",
+    ));
+
     for (const rec of mine) {
       list.append(el("div", { class: "my-record" },
+        el("div", { class: "mr-flask" }, icon("flask", { size: 20 })),
         el("div", {},
           el("div", { class: "mr-title" }, rec.eventTitle),
           el("div", { class: "mr-meta" }, `${rec.eventDate} · ${rec.slotTime}`),
@@ -501,18 +759,18 @@
   // ── Инициализация ────────────────────────────────────────────────────────
 
   async function init() {
-    $("#nav-register").addEventListener("click", () => setView("register"));
-    $("#nav-schedule").addEventListener("click", () => setView("schedule"));
-    $("#nav-mine").addEventListener("click",     () => setView("mine"));
+    $("#nav-register").addEventListener("click", () => setView("register", { fromNav: true }));
+    $("#nav-schedule").addEventListener("click", () => setView("schedule", { fromNav: true }));
+    $("#nav-mine").addEventListener("click",     () => setView("mine",     { fromNav: true }));
 
     $("#view-register").append(el("div", { class: "card" }, el("div", { class: "muted" }, "Загрузка…")));
 
     try {
-      [state.users, state.events, state.roles, state.ptypes] = await Promise.all([
-        Api.getUsers(),
+      [state.events, state.roles, state.ptypes, state.cfg] = await Promise.all([
         Api.getEvents(),
         Api.getRoles(),
         Api.getParticipationTypes(),
+        Api.getConfig(),
       ]);
     } catch {
       $("#view-register").innerHTML = "";
@@ -527,7 +785,7 @@
     state.activeTabEventId = state.events[0]?.id ?? null;
 
     const sk   = savedKey();
-    const user = sk ? findUser(sk) : null;
+    const user = sk ? await Api.getUserByKey(sk).catch(() => null) : null;
     if (user) {
       state.currentUser = user;
       setAuthed(true);

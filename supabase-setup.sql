@@ -26,11 +26,13 @@ create table if not exists public.users (
   created_at  timestamptz not null default now()
 );
 
--- ---------- Мероприятия -----------------------------------------------------
+-- ---------- Активности -------------------------------------------------------
 create table if not exists public.events (
   id          text primary key,
   title       text not null,
   description text not null default '',
+  location    text not null default '',
+  prep_note   text not null default '',
   sort_order  int  not null default 0,
   is_active   boolean not null default true
 );
@@ -132,7 +134,8 @@ insert into public.participation_types (id, label, for_role) values
 on conflict (id) do nothing;
 
 insert into public.config (key, value, note) values
-  ('registration_cooldown_minutes', '180', 'Минимальный интервал между записями одного ключа (в минутах)')
+  ('registration_cooldown_minutes', '10',  'Минимальный интервал между записями одного ключа (в минутах)'),
+  ('refresh_interval_seconds',      '30',  'Как часто обновлять график записей (в секундах)')
 on conflict (key) do nothing;
 
 insert into public.users (key, last_name, first_name, role) values
@@ -147,18 +150,18 @@ insert into public.users (key, last_name, first_name, role) values
   ('tck4',     'Зайцев',   'Артём',   'tccg')
 on conflict (key) do nothing;
 
-insert into public.events (id, title, description, sort_order) values
-  ('feedback',     'Мастер-класс по обратной связи', 'Мастер-класс по обратной связи. Разбираем, как давать и принимать обратную связь так, чтобы она работала.', 1),
-  ('inspector',    'Инспектор на час',                'Инспектор на час. Возможность побыть в роли инспектора и взглянуть на процессы с другой стороны.',           2),
-  ('exchange',     'Обмен опытом',                    'Обмен опытом. Делимся наработками, кейсами и лайфхаками друг с другом.',                                    3),
-  ('frankenstein', 'Франкенштейн',                    'Франкенштейн. Собираем из разных частей и идей что-то новое и рабочее.',                                     4),
-  ('owngame',      'Своя игра',                       'Своя игра. Всего 4 места на каждую дату: 2 для сотрудников сервисной поддержки (личное время) и 2 для команды ТЦК.', 5)
+insert into public.events (id, title, description, location, prep_note, sort_order) values
+  ('feedback',     'Мастер-класс по обратной связи', 'Соберем конструктор развивающей обратной связи',                                                                                 'Переговорка 119 (Лето)',    'Просто придти вовремя',                      1),
+  ('inspector',    'Инспектор на час',                'Инспектор на час. Возможность побыть в роли инспектора и взглянуть на процессы с другой стороны.',                              'Где хочешь',               'Получить письмо с инструкциями на почте',    2),
+  ('exchange',     'Обмен опытом',                    'Делимся наработками, кейсами и лайфхаками друг с другом в небольших группах.',                                                  'Сообщим после записи',     'Просто подождать сообщения в личку',          3),
+  ('frankenstein', 'Франкенштейн',                    'Находим решение, применяя разные элементы',                                                                                     'Лабораторный уголок (А101)', 'Придти вовремя и получить задание',          4),
+  ('owngame',      'Своя игра',                       'Интеллектуальный батл в формате «Своей игры»: выбираем тему, отвечаем на вопросы, зарабатываем очки. Лучший знаток уходит с призом!', 'Конференц-зал (2 этаж)', 'Придти вовремя',                    5)
 on conflict (id) do nothing;
 
 -- Даты и слоты добавляются через Table Editor или отдельным скриптом.
 -- Пример добавить дату:
 --   insert into event_dates (event_id, date, date_label, sort_order)
---   values ('feedback', '2026-06-29', '29 июня, понедельник', 1);
+--   values ('feedback', '2026-06-29', 'Понедельник (29 июня)', 1);
 --
 -- Пример добавить слот (event_date_id берём из таблицы event_dates):
 --   insert into event_slots (event_date_id, time, types, sort_order)

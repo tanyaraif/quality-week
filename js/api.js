@@ -13,7 +13,11 @@ const Api = (() => {
 
   async function get(path) {
     const res = await fetch(`${base}${path}`, { headers: hdrs() });
-    if (!res.ok) throw new Error(`${path} → ${res.status}`);
+    if (!res.ok) {
+      const err = new Error(`${path} → ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
     return res.json();
   }
 
@@ -36,12 +40,24 @@ const Api = (() => {
   }
 
   async function getUsers() {
-    return (await get("/users?select=*")).map((u) => ({
-      key:       u.key,
+    return (await get("/users?select=id,last_name,first_name,role")).map((u) => ({
+      id:        u.id,
       lastName:  u.last_name,
       firstName: u.first_name,
       role:      u.role,
     }));
+  }
+
+  async function getUserByKey(key) {
+    const rows = await get(`/users?select=id,last_name,first_name,role&key=eq.${encodeURIComponent(key)}&limit=1`);
+    if (!rows.length) return null;
+    const u = rows[0];
+    return { id: u.id, lastName: u.last_name, firstName: u.first_name, role: u.role };
+  }
+
+  async function getConfig() {
+    const rows = await get("/config?select=key,value");
+    return Object.fromEntries(rows.map((r) => [r.key, r.value]));
   }
 
   async function getRoles() {
@@ -77,6 +93,8 @@ const Api = (() => {
       id:          e.id,
       title:       e.title,
       description: e.description,
+      location:    e.location ?? '',
+      prepNote:    e.prep_note ?? '',
       dates:       datesByEventId[e.id] ?? [],
     }));
   }
@@ -114,11 +132,11 @@ const Api = (() => {
     return getRecords();
   }
 
-  return { getUsers, getRoles, getParticipationTypes, getEvents, getRecords, addRecord };
+  return { getConfig, getUsers, getUserByKey, getRoles, getParticipationTypes, getEvents, getRecords, addRecord };
 })();
 
-function checkCooldown(records, userKey) {
-  const cooldownMs = CONFIG.registrationCooldownMinutes * 60_000;
+function checkCooldown(records, userKey, cooldownMinutes) {
+  const cooldownMs = cooldownMinutes * 60_000;
   const times = records
     .filter((r) => r.userKey === userKey)
     .map((r) => new Date(r.createdAt).getTime())
@@ -158,4 +176,12 @@ function formatRemaining(ms) {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return h > 0 ? `${h} ч ${String(m).padStart(2, "0")} мин` : `${mins} мин`;
+}
+
+function formatMinutes(totalMins) {
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  if (h > 0 && m > 0) return `${h} ч ${m} мин`;
+  if (h > 0)          return `${h} ч`;
+  return `${m} мин`;
 }

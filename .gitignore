@@ -2,5 +2,7 @@
 .env
 .env.local
 .mcp.json
+
+supabase-setup.sql
 # На случай, если токен снова окажется в .mcp.json — не коммитим его
 # (сейчас токен подставляется из переменной окружения SUPABASE_ACCESS_TOKEN)
