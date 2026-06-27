@@ -102,11 +102,14 @@
     ));
   }
 
-  function showMsg(id, text, type) {
+  function showMsg(id, text, type, { scroll = false } = {}) {
     const box = $(id);
     if (!box) return;
     box.innerHTML = "";
     box.append(el("div", { class: `msg ${type}` }, text));
+    if (scroll) {
+      setTimeout(() => box.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
+    }
   }
 
   function setView(view, { fromNav = false } = {}) {
@@ -161,7 +164,7 @@
     root.append(el("div", { class: "card card-enter" },
       decor,
       el("h1", {}, "Войдите в лабораторию"),
-      el("p", { class: "subtitle" }, "Ключ вам выдали в личных сообщениях — введите его, чтобы записаться на мероприятия."),
+      el("p", { class: "subtitle" }, "Ключ прислали вам на почту — введите его, чтобы записаться на мероприятия."),
       el("div", { id: "register-msg" }),
       el("div", { class: "field" },
         el("label", { for: "key-input" }, "Персональный ключ"),
@@ -178,6 +181,13 @@
   async function handleKeySubmit() {
     const key = $("#key-input").value.trim();
     if (!key) { showMsg("#register-msg", "Введите ключ.", "error"); return; }
+
+    // Пасхалка: «service1» — это пример из подсказки, а не настоящий ключ.
+    if (key.toLowerCase() === "service1") {
+      showModal({ type: "error", title: "Ну это же пример 😄",
+        text: "service1 — это просто образец из подсказки. Загляните в почту, там ваш настоящий ключ." });
+      return;
+    }
 
     const btn = $("#key-submit");
     btn.disabled = true;
@@ -259,7 +269,7 @@
         icon("flask", { size: 16, stroke: 2 }),
       ),
       el("div", { class: "lab-badge-info" },
-        el("span", { class: "lab-badge-name" }, `${user.lastName} ${user.firstName}`),
+        el("span", { class: "lab-badge-name" }, `${user.firstName} ${user.lastName}`),
         el("span", { class: "lab-badge-role" }, roleLabel(user.role)),
       ),
     );
@@ -289,15 +299,35 @@
       return;
     }
 
-    const available = state.events.filter((ev) => {
-      if (user && isRegisteredForEvent(state.records, savedKey(), ev.id)) return false;
-      return ev.dates.some((d) => d.date >= today);
-    });
+    const withFutureDates = state.events.filter((ev) => ev.dates.some((d) => d.date >= today));
+    const available = withFutureDates.filter((ev) =>
+      !(user && isRegisteredForEvent(state.records, savedKey(), ev.id))
+    );
+
+    const submitBtn = $("#register-submit");
 
     if (!available.length) {
-      container.append(el("div", { class: "muted" }, "Все активности уже в вашей колбе."));
+      const allRegistered = withFutureDates.length > 0;
+      container.append(el("div", { class: "empty-events" },
+        (() => {
+          const f = icon("flask", { size: 44, stroke: 1.4 });
+          f.setAttribute("class", "empty-events-icon");
+          return f;
+        })(),
+        el("div", { class: "empty-events-title" },
+          allRegistered ? "Вы записались на все активности 🎉" : "Сейчас нет открытых активностей",
+        ),
+        el("div", { class: "empty-events-text" },
+          allRegistered
+            ? "Свои записи можно посмотреть во вкладке «Мои записи». Чтобы изменить или отменить запись, напишите Тане в Mattermost."
+            : "Запись на ближайшие активности пока закрыта. Загляните позже — слоты появятся здесь.",
+        ),
+      ));
+      if (submitBtn) submitBtn.classList.add("hidden");
       return;
     }
+
+    if (submitBtn) submitBtn.classList.remove("hidden");
 
     for (const ev of available) {
       const isSelected = state.selectedEventId === ev.id;
@@ -374,20 +404,43 @@
     personal: "Приду в своё личное время",
   };
 
+  // Сколько свободных слотов у типа участия по всем будущим датам события.
+  function freeSlotsForType(ev, typeId) {
+    if (!ev) return 0;
+    const today = todayOmsk();
+    let free = 0;
+    for (const d of ev.dates) {
+      if (d.date < today) continue;
+      d.slots.forEach((slot, index) => {
+        if (slot.types.includes(typeId) &&
+            !isSlotTaken(state.records, ev.id, d.date, index, typeId)) {
+          free++;
+        }
+      });
+    }
+    return free;
+  }
+
   function fillTypeCards() {
     const container = $("#type-cards");
     if (!container) return;
     container.innerHTML = "";
+    const ev = state.selectedEventId ? findEvent(state.selectedEventId) : null;
     const userPtypes = ptypesForRole(state.currentUser.role);
     for (const t of userPtypes) {
       const isSelected = state.selectedType === t.id;
       const hint = TYPE_HINTS[t.id];
+      const soldOut = freeSlotsForType(ev, t.id) === 0;
       container.append(el("div", {
-        class: "date-pick-card type-pick-card" + (isSelected ? " selected" : ""),
-        onClick: () => onTypeCardClick(t.id),
+        class: "date-pick-card type-pick-card"
+          + (isSelected ? " selected" : "")
+          + (soldOut ? " disabled" : ""),
+        onClick: soldOut ? null : () => onTypeCardClick(t.id),
       },
         el("div", { class: "type-pick-label" }, t.label),
-        hint ? el("div", { class: "type-pick-hint" }, hint) : null,
+        soldOut
+          ? el("div", { class: "type-pick-hint type-pick-soldout" }, "Нет свободных слотов")
+          : (hint ? el("div", { class: "type-pick-hint" }, hint) : null),
       ));
     }
   }
@@ -415,6 +468,19 @@
     renderSlots();
   }
 
+  // Сколько свободных слотов на конкретную дату для выбранного типа участия.
+  function freeSlotsForDate(ev, d, typeId) {
+    if (!ev || !d || !typeId) return 0;
+    let free = 0;
+    d.slots.forEach((slot, index) => {
+      if (slot.types.includes(typeId) &&
+          !isSlotTaken(state.records, ev.id, d.date, index, typeId)) {
+        free++;
+      }
+    });
+    return free;
+  }
+
   function fillDateCards() {
     const container = $("#date-cards");
     if (!container) return;
@@ -428,10 +494,18 @@
 
     for (const d of futureDates) {
       const isSelected = state.selectedDate === d.date;
+      const soldOut = state.selectedType
+        ? freeSlotsForDate(ev, d, state.selectedType) === 0
+        : false;
       const card = el("div", {
-        class: "date-pick-card" + (isSelected ? " selected" : ""),
-        onClick: () => onDateCardClick(d.date),
-      }, d.dateLabel);
+        class: "date-pick-card"
+          + (isSelected ? " selected" : "")
+          + (soldOut ? " disabled" : ""),
+        onClick: soldOut ? null : () => onDateCardClick(d.date),
+      },
+        el("div", { class: "date-pick-label" }, d.dateLabel),
+        soldOut ? el("div", { class: "date-pick-soldout" }, "Нет свободных слотов") : null,
+      );
       container.append(card);
     }
   }
@@ -468,7 +542,7 @@
     fillEventCards();
     const cd = checkCooldown(state.records, savedKey(), state.cfg.registration_cooldown_minutes);
     if (!cd.allowed) {
-      showMsg("#register-msg", `Реакция ещё идёт ☕ Следующая запись будет готова через ${formatRemaining(cd.remainingMs)}.`, "info");
+      showMsg("#register-msg", `Реакция ещё идёт ☕ Следующую запись можно будет совершить через ${formatRemaining(cd.remainingMs)}.`, "info");
     }
     if (state.selectedEventId && state.selectedDate) renderSlots();
   }
@@ -490,7 +564,15 @@
     const available = eventDate.slots.map((slot, index) => ({ slot, index })).filter(({ slot }) => slot.types.includes(type));
 
     if (!available.length) {
-      container.append(el("div", { class: "muted" }, "Для вашего типа участия на эту дату нет слотов."));
+      container.append(el("div", { class: "muted" }, "На эту дату для вашего типа участия слотов нет. Выберите другую дату."));
+      return;
+    }
+
+    const freeCount = available.filter(({ index }) =>
+      !isSlotTaken(state.records, ev.id, state.selectedDate, index, type)
+    ).length;
+    if (freeCount === 0) {
+      container.append(el("div", { class: "muted" }, "Все слоты на эту дату уже заняты. Попробуйте выбрать другую дату."));
       return;
     }
 
@@ -511,10 +593,10 @@
 
   async function handleRegister() {
     const user = state.currentUser;
-    if (!state.selectedEventId)        { showMsg("#register-msg", "Выберите активность.", "error"); return; }
-    if (!state.selectedDate)           { showMsg("#register-msg", "Выберите дату.", "error"); return; }
-    if (!state.selectedType)           { showMsg("#register-msg", "Выберите тип участия.", "error"); return; }
-    if (state.selectedSlotIndex === null) { showMsg("#register-msg", "Выберите свободное время.", "error"); return; }
+    if (!state.selectedEventId)        { showMsg("#register-msg", "Выберите активность.", "error", { scroll: true }); return; }
+    if (!state.selectedType)           { showMsg("#register-msg", "Выберите тип участия.", "error", { scroll: true }); return; }
+    if (!state.selectedDate)           { showMsg("#register-msg", "Выберите дату.", "error", { scroll: true }); return; }
+    if (state.selectedSlotIndex === null) { showMsg("#register-msg", "Выберите свободное время.", "error", { scroll: true }); return; }
 
     const btn = $("#register-submit");
     const setBtn = (children) => { btn.innerHTML = ""; btn.append(...children); };
@@ -632,7 +714,7 @@
           const rec  = findSlotRecord(state.records, ev.id, eventDate.date, index, t);
           if (!rec)  return el("td", { class: "cell-free" }, "свободно");
           const mine = savedKey() && rec.userKey === savedKey();
-          return el("td", { class: "cell-name" + (mine ? " cell-mine" : "") }, `${rec.lastName} ${rec.firstName}`);
+          return el("td", { class: "cell-name" + (mine ? " cell-mine" : "") }, `${rec.firstName} ${rec.lastName}`);
         }),
       ),
     );
@@ -667,10 +749,6 @@
           buildDateTable(ev, eventDate),
         ),
       ),
-      el("div", { class: "refresh-note" },
-        el("span", { class: "dot" }),
-        `График обновляется автоматически раз в ${state.cfg.refresh_interval_seconds} секунд.`,
-      ),
     );
   }
 
@@ -692,6 +770,8 @@
     if (state.view !== "register" || !state.currentUser) return;
     try { state.records = await Api.getRecords(); } catch { return; }
     fillEventCards();
+    if (state.selectedEventId) fillTypeCards();
+    if (state.selectedEventId) fillDateCards();
     if (state.selectedEventId && state.selectedDate && state.selectedSlotIndex !== null &&
         isSlotTaken(state.records, state.selectedEventId, state.selectedDate, state.selectedSlotIndex, state.selectedType)) {
       state.selectedSlotIndex = null;

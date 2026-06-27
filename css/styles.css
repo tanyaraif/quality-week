@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
   /* Тёмная лаборатория */
@@ -32,7 +32,7 @@
   --radius-pill:   999px;
 
   --font-display: 'Fredoka', 'Trebuchet MS', sans-serif;
-  --font-mono:    'Space Mono', 'Courier New', monospace;
+  --font-mono:    'IBM Plex Mono', 'Courier New', monospace;
   --font-body:    'Inter', -apple-system, sans-serif;
 }
 
@@ -436,8 +436,8 @@ select:focus {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--font-mono);
-  font-size: 0.83rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
   color: var(--ink-dim);
   letter-spacing: 0.01em;
   line-height: 1.5;
@@ -703,8 +703,9 @@ select:focus {
 }
 
 .type-pick-label {
-  font-family: var(--font-mono);
-  font-size: 0.84rem;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.9rem;
   color: var(--ink);
 }
 
@@ -717,6 +718,21 @@ select:focus {
 
 .type-pick-card.selected .type-pick-hint {
   color: var(--ink-dim);
+}
+
+.type-pick-card.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.type-pick-card.disabled .type-pick-label {
+  color: var(--ink-faint);
+}
+
+.type-pick-soldout {
+  color: var(--danger) !important;
+  font-weight: 600;
 }
 
 /* ── Плитки дат ── */
@@ -751,6 +767,21 @@ select:focus {
   color: var(--ink);
   box-shadow: 0 0 0 1px rgba(244, 114, 182, 0.25), 0 4px 14px var(--magenta-glow);
   transform: translateY(-2px);
+}
+
+.date-pick-card.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.date-pick-soldout {
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--danger);
+  margin-top: 3px;
+  white-space: nowrap;
 }
 
 /* ── Слоты как пробирки ── */
@@ -950,28 +981,6 @@ select:focus {
 
 .cell-empty { color: var(--ink-faint); text-align: center; }
 
-.refresh-note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--ink-dim);
-  font-size: 0.82rem;
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-soft);
-  font-family: var(--font-mono);
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--acid);
-  box-shadow: 0 0 8px var(--acid);
-  flex-shrink: 0;
-  animation: pulse 1.8s infinite;
-}
-
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.25; }
@@ -1045,9 +1054,9 @@ select:focus {
 
 .my-record .mr-meta {
   color: var(--ink-dim);
-  font-size: 0.84rem;
+  font-size: 0.86rem;
   margin-top: 3px;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
 }
 
 .my-record .mr-type {
@@ -1061,6 +1070,38 @@ select:focus {
   white-space: nowrap;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+.empty-events {
+  text-align: center;
+  padding: 30px 18px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(110, 231, 183, 0.04);
+}
+
+.empty-events-icon {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 12px;
+  color: var(--acid);
+  opacity: 0.75;
+}
+
+.empty-events-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.empty-events-text {
+  color: var(--ink-dim);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  max-width: 380px;
+  margin: 0 auto;
 }
 
 .empty-state {

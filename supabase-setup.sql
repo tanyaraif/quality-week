@@ -138,17 +138,11 @@ insert into public.config (key, value, note) values
   ('refresh_interval_seconds',      '30',  'Как часто обновлять график записей (в секундах)')
 on conflict (key) do nothing;
 
-insert into public.users (key, last_name, first_name, role) values
-  ('123',      'Тестов',   'Тест',    'service'),
-  ('service1', 'Иванов',   'Иван',    'service'),
-  ('service2', 'Смирнова', 'Ольга',   'service'),
-  ('service3', 'Кузнецов', 'Дмитрий', 'service'),
-  ('service4', 'Волкова',  'Марина',  'service'),
-  ('tck1',     'Петрова',  'Анна',    'tccg'),
-  ('tck2',     'Соколов',  'Максим',  'tccg'),
-  ('tck3',     'Морозова', 'Елена',   'tccg'),
-  ('tck4',     'Зайцев',   'Артём',   'tccg')
-on conflict (key) do nothing;
+-- last_name хранит первую букву фамилии («Б.»), first_name — имя целиком.
+-- В интерфейсе выводится как «Имя Ф.» (например, «Молдир Б.»).
+-- insert into public.users (key, last_name, first_name, role) values
+
+-- on conflict (key) do nothing;
 
 insert into public.events (id, title, description, location, prep_note, sort_order) values
   ('feedback',     'Мастер-класс по обратной связи', 'Соберем конструктор развивающей обратной связи',                                                                                 'Переговорка 119 (Лето)',    'Просто придти вовремя',                      1),
