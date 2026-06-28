@@ -164,7 +164,7 @@
     root.append(el("div", { class: "card card-enter" },
       decor,
       el("h1", {}, "Войдите в лабораторию"),
-      el("p", { class: "subtitle" }, "Ключ прислали вам на почту — введите его, чтобы записаться на мероприятия."),
+      el("p", { class: "subtitle" }, "Ключ прислали вам в Mattermost — введите его, чтобы записаться на мероприятия."),
       el("div", { id: "register-msg" }),
       el("div", { class: "field" },
         el("label", { for: "key-input" }, "Персональный ключ"),
@@ -174,18 +174,26 @@
         icon("droplet"), "Запустить реакцию"),
     ));
     const input = $("#key-input");
+    input.addEventListener("input", () => {
+      const lower = input.value.toLowerCase();
+      if (input.value !== lower) {
+        const pos = input.selectionStart;
+        input.value = lower;
+        input.setSelectionRange(pos, pos);
+      }
+    });
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") handleKeySubmit(); });
     input.focus();
   }
 
   async function handleKeySubmit() {
-    const key = $("#key-input").value.trim();
+    const key = $("#key-input").value.trim().toLowerCase();
     if (!key) { showMsg("#register-msg", "Введите ключ.", "error"); return; }
 
     // Пасхалка: «service1» — это пример из подсказки, а не настоящий ключ.
-    if (key.toLowerCase() === "service1") {
+    if (key === "service1") {
       showModal({ type: "error", title: "Ну это же пример 😄",
-        text: "service1 — это просто образец из подсказки. Загляните в почту, там ваш настоящий ключ." });
+        text: "service1 — это просто образец из подсказки. Загляните в Mattermost, там ваш настоящий ключ." });
       return;
     }
 
